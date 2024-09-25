@@ -97,9 +97,9 @@ Hands on
 ============
 
 
-create a topic named generalmessage
-send three message to generalmessage
-display all messages from topic generalmessage
+--create a topic named generalmessage
+--send three message to generalmessage
+--display all messages from topic generalmessage
 
 --Verify all the topics using list command
 
