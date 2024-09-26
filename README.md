@@ -420,6 +420,397 @@ custom deserializer
 
 
 
+==============================================================
+
+Hands on : Read data from specific partition in a topic
+
+
+package com.training.customserializer;
+
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Properties;
+
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+
+public class CustomerConsumer {
+
+	public static void main(String[] args) {
+
+		String topicName = "ofsstopic";
+		int targetPartition = 3;
+		// Set properties for kafka
+		Properties kafkaProperties = new Properties();
+		kafkaProperties.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
+		kafkaProperties.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+		kafkaProperties.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+		kafkaProperties.put(ConsumerConfig.GROUP_ID_CONFIG, "ofss-consumer-group");
+		kafkaProperties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+		KafkaConsumer<String, String> consumer = new KafkaConsumer<String, String>(kafkaProperties);
+		//consumer.seekToBeginning(consumer.assignment());
+		TopicPartition partition = new TopicPartition(topicName, targetPartition);
+		consumer.assign(Arrays.asList(partition));
+		ConsumerRecords<String, String> consumerRecords = consumer.poll(Duration.ofSeconds(2));
+		for (ConsumerRecord<String, String> temp : consumerRecords) {
+			System.out.println(temp);
+		}
+		consumer.close();
+		System.out.println("Successfully fetched all the message from topic :" + topicName);
+	}
+}
+
+
+
+=====================Serde Demo
+
+
+package com.training.customserializer;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Objects;
+
+import org.apache.kafka.common.errors.SerializationException;
+import org.apache.kafka.common.serialization.Deserializer;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.training.model.CustomerKey;
+
+public class CustomerKeyDeserializer implements Deserializer<CustomerKey> {
+
+	private final ObjectMapper objectMapper = new ObjectMapper();
+
+	@Override
+	public void configure(Map<String, ?> configs, boolean isKey) {
+
+	}
+
+	@Override
+	public CustomerKey deserialize(String topic, byte[] bytes) {
+		CustomerKey data = null;
+		if (Objects.isNull(bytes)) {
+			return null;
+		}
+
+		try {
+			data = objectMapper.treeToValue(objectMapper.readTree(bytes), CustomerKey.class);
+		} catch (JsonProcessingException e) {
+			throw new SerializationException("Some problem occurred:" + e);
+		} catch (IllegalArgumentException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		return data;
+	}
+
+}
+
+
+----------------------------------------
+
+package com.training;
+
+import java.time.LocalDateTime;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serdes;
+
+import com.training.customserializer.CustomerKeyDeserializer;
+import com.training.customserializer.CustomerKeySerializer;
+import com.training.model.CustomerKey;
+
+public class CustomerProducer {
+
+	public static void main(String[] args) {
+
+		String topicName = "ofsstopic";
+
+		//Serde
+		Serde<CustomerKey> customerSerde = Serdes.serdeFrom(new CustomerKeySerializer(), new CustomerKeyDeserializer());
+		
+		// Set properties for kafka
+		Properties kafkaProperties = new Properties();
+		kafkaProperties.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
+	//	kafkaProperties.put("key.serializer", "com.training.customserializer.CustomerKeySerializer");
+		kafkaProperties.put("key.serializer", customerSerde.serializer().getClass());
+
+		kafkaProperties.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		kafkaProperties.put("partitioner.class", "com.training.custom.CustomerCustomerPartitioner");
+
+		// Produce a message
+		Producer<CustomerKey, String> producer = new KafkaProducer<CustomerKey, String>(kafkaProperties);
+
+		for (int i = 0; i < 10; i++) {
+			RecordMetadata metadata;
+			try {
+				metadata = producer.send(
+								new ProducerRecord<CustomerKey, String>
+								(topicName, new CustomerKey("101", LocalDateTime.now()), "value"+i)).get();
+				System.out.println(
+						"Message sent to partition no :" + metadata.partition() + "  and offset :" + metadata.offset());
+						
+			} catch (InterruptedException | ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		
+		}
+
+		
+		producer.close();
+
+		System.out.println("Message sent successfully to kafka topic : " + topicName);
+	}
+}
+
+
+
+
+Asynchronous message in kafka
+==============================
+
+package com.training;
+
+import java.time.LocalDateTime;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serdes;
+
+import com.training.customserializer.CustomerKeyDeserializer;
+import com.training.customserializer.CustomerKeySerializer;
+import com.training.model.CustomerKey;
+
+public class CustomerProducer {
+
+	public static void main(String[] args) {
+
+		String topicName = "ofsstopic";
+
+		// Serde
+		Serde<CustomerKey> customerSerde = Serdes.serdeFrom(new CustomerKeySerializer(), new CustomerKeyDeserializer());
+
+		// Set properties for kafka
+		Properties kafkaProperties = new Properties();
+		kafkaProperties.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
+		// kafkaProperties.put("key.serializer",
+		// "com.training.customserializer.CustomerKeySerializer");
+		kafkaProperties.put("key.serializer", customerSerde.serializer().getClass());
+
+		kafkaProperties.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		kafkaProperties.put("partitioner.class", "com.training.custom.CustomerCustomerPartitioner");
+
+		// Produce a message
+		Producer<CustomerKey, String> producer = new KafkaProducer<CustomerKey, String>(kafkaProperties);
+
+		for (int i = 0; i < 10; i++) {
+			RecordMetadata metadata;
+
+			try {
+				metadata = producer.send(new ProducerRecord<CustomerKey, String>(topicName,
+						new CustomerKey("101", LocalDateTime.now()), "value" + i)).get();
+				System.out.println(
+						"Message sent to partition no :" + metadata.partition() + "  and offset :" + metadata.offset());
+				new A().display();
+			} catch (InterruptedException | ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		producer.close();
+
+		System.out.println("Message sent successfully to kafka topic : " + topicName);
+	}
+}
+
+class A {
+	public void display() {
+		System.out.println("Display called");
+		Thread t1 = new Thread() {
+			public void run() {
+				try {
+					Thread.sleep(10000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				System.out.println("Hello");
+				
+			}
+		};
+		t1.start();
+	}
+}
+
+
+-------------------------------------------
+  
+  
+  package com.training;
+
+import java.time.LocalDateTime;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+
+import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serdes;
+
+import com.training.customserializer.CustomerKeyDeserializer;
+import com.training.customserializer.CustomerKeySerializer;
+import com.training.model.CustomerKey;
+
+public class CustomerProducerAsync {
+
+	public static void main(String[] args) {
+
+		String topicName = "ofsstopic";
+
+		// Serde
+		Serde<CustomerKey> customerSerde = Serdes.serdeFrom(new CustomerKeySerializer(), new CustomerKeyDeserializer());
+
+		// Set properties for kafka
+		Properties kafkaProperties = new Properties();
+		kafkaProperties.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
+		// kafkaProperties.put("key.serializer",
+		// "com.training.customserializer.CustomerKeySerializer");
+		kafkaProperties.put("key.serializer", customerSerde.serializer().getClass());
+
+		kafkaProperties.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		kafkaProperties.put("partitioner.class", "com.training.custom.CustomerCustomerPartitioner");
+
+		// Produce a message
+		Producer<CustomerKey, String> producer = new KafkaProducer<CustomerKey, String>(kafkaProperties);
+
+		for (int i = 0; i < 10; i++) {
+			// A Future represents the result of an asynchronous computation
+			Future<RecordMetadata> metadata;
+			metadata = producer.send(new ProducerRecord<CustomerKey, String>(topicName,
+					new CustomerKey("101", LocalDateTime.now()), "value" + i), new MyProducerCallback());
+			try {
+				System.out.println("Message sent to partition no :" + metadata.get().partition());
+			} catch (InterruptedException | ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+		}
+		producer.close();
+		System.out.println("Message sent successfully to kafka topic : " + topicName);
+	}
+}
+
+/*
+ * A callback interface that the user can implement to allow code to execute
+ * when the request is complete. This callback will generally execute in the
+ * background I/O thread so it should be fast.
+ */
+class MyProducerCallback implements Callback {
+	@Override
+	public void onCompletion(RecordMetadata metadata, Exception exception) {
+		if (exception != null) {
+			System.out.println("Async operation failed");
+		} else {
+			System.out.println("Async operation completed successfully!!");
+			Thread t1 = new Thread() {
+				public void run() {
+					try {
+						Thread.sleep(10000);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					System.out.println("Hello");
+				}
+			};
+			t1.start();
+			System.out.println("Async operation started a thread!!");
+
+		}
+
+	}
+
+}
+
+  
+
+
+
+
+
+
+
+
+  Use case : To post message from helidion or any spring application.
+
+
+application.yml
+
+server:
+ port: 9090
+
+app:
+ topic:
+  name: ofsstopic
+
+spring:
+ kafka:
+   producer:
+    bootstrap-servers: localhost:9092
+    key-serializer: org.apache.kafka.common.serialization.StringSerializer
+    value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+   consumer:
+    bootstrap-servers: localhost:9092
+    key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+
+-----------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
