@@ -302,5 +302,136 @@ Kafka using java
     <version>3.8.0</version>
 </dependency>
 
+package com.training;
+
+import java.util.Properties;
+
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
+public class SimpleProducer {
+
+	public static void main(String[] args) {
+		
+		String topicName = "ofsstopic";
+		
+		//Set properties for kafka
+		Properties kafkaProperties = new Properties();
+		kafkaProperties.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
+		kafkaProperties.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		kafkaProperties.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		
+		//Produce a message
+		
+		Producer<String, String> producer = new KafkaProducer<String, String>(kafkaProperties);
+		
+		ProducerRecord<String, String> record = new ProducerRecord<String, String>
+		(topicName, "key1","SayHelloFromOFSS");
+		
+		producer.send(record);
+		
+		producer.close();
+		
+		System.out.println("Message sent successfully to kafka topic : "+topicName);
+	}
+}
+
+
+-----------------
+
+
+Consume
+
+Error :
+Exception in thread "main" org.apache.kafka.common.errors.InvalidGroupIdException: To use the group management or offset commit APIs, you must provide a valid group.id in the consumer configuration.
+
+Solution :
+kafkaProperties.put(ConsumerConfig.GROUP_ID_CONFIG, UUID.randomUUID().toString());
+
+
+
+
+--------------------------------------------------------------------------
+
+Custom Partition
+
+How to attach a key to specific partition ?
+
+
+Step 1: Create a custom partitioner :
+package com.training.custom;
+
+import org.apache.kafka.clients.producer.internals.DefaultPartitioner;
+import org.apache.kafka.common.Cluster;
+
+public class CustomPartitioner extends DefaultPartitioner{
+
+	@Override
+	public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster) {
+	
+		//return super.partition(topic, key, keyBytes, value, valueBytes, cluster);
+		return 3;
+
+	}
+}
+
+
+Step 2: 
+
+		kafkaProperties.put("partitioner.class", "com.training.custom.CustomPartitioner");
+
+
+
+
+Real time use cases ?
+
+Amazon
+
+	customer
+
+		Customer
+		10 transaction
+
+
+	NAME	- 0 partition
+
+	transaction1 	-5 partition
+	transaction7	- 8 partition
+
+
+
+Requirement : Put one customer details including name and all his/her transaction in one partition.
+
+
+
+
+What is serde in kafka 
+
+Serde is a framework for serializing and deserializing Rust data structures efficiently and generically.
+
+The Apache Kafka provides a Serde interface, which is a wrapper for serializer and deserializer of a data type.
+
+
+custom partition
+custom serializer
+custom deserializer
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
