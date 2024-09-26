@@ -291,3 +291,16 @@ Caused by: org.apache.kafka.common.errors.DisconnectException: Cancelled createT
  (org.apache.kafka.tools.TopicCommand)
 
 
+
+
+Kafka using java
+
+<!-- https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients -->
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-clients</artifactId>
+    <version>3.8.0</version>
+</dependency>
+
+
+
